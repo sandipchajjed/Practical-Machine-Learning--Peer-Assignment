@@ -1,0 +1,165 @@
+---
+title: "Practical Machine Learning- Peer_Assessment"
+author: "Sandip Chajjed"
+date: "11/6/2016"
+output: html_document
+---
+```{r setoptions}
+rm(list=ls(all=TRUE)) #start with empty workspace
+startTime <- Sys.time()
+
+library(knitr)
+opts_chunk$set(echo = TRUE, cache= TRUE, results = 'hold')
+
+```
+
+```{r library_calls, message=FALSE, warning=FALSE, results='hide'}
+
+library(ElemStatLearn)
+library(caret)
+library(rpart)
+library(randomForest)
+library(RCurl)
+set.seed(61116)
+
+```
+### Load and prepare the data and clean up the data
+```{r Temp_Dir Hide, echo=FALSE}
+data_dir <- "./Practical-Machine-Learning--Peer-Assignment/";
+
+pathAnswers <- "./Practical-Machine-Learning--Peer-Assignment/"
+```
+
+
+Load and prepare the data
+
+```{r load_prep_call}
+
+trainingdata <- getURL("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+pmltrain_CSV  <- read.csv(text = trainingdata, header=TRUE, sep=",", na.strings=c("NA",""))
+
+pmltrain_CSV <- pmltrain_CSV[,-1] # Remove the first column that represents a ID Row
+
+```
+### Data Sets Partitions Definitions
+
+Create data partitions of training and validating data sets.
+
+```{r dataPart}
+
+inTrain = createDataPartition(pmltrain_CSV$classe, p=0.60, list=FALSE)
+training = pmltrain_CSV[inTrain,]
+validating = pmltrain_CSV[-inTrain,]
+
+# number of rows and columns of data in the training set
+
+dim(training)
+
+# number of rows and columns of data in the validating set
+
+dim(validating)
+
+```
+## Data Exploration and Cleaning
+
+Since our data set has too many columns, we will remove columns with less that 60% of data entered. We will choose a random forest model. 
+
+```{r CkNA, echo=TRUE, results='asis'}
+
+# Number of cols with less than 60% of data
+sum((colSums(!is.na(training[,-ncol(training)])) < 0.6*nrow(training)))
+
+# Apply our criteria to remove columns that don't have enough data, before its apply to the model.
+
+Keep <- c((colSums(!is.na(training[,-ncol(training)])) >= 0.6*nrow(training)))
+training   <-  training[,Keep]
+validating <- validating[,Keep]
+
+# number of rows and columns of data in the final training set
+
+dim(training)
+
+# number of rows and columns of data in the final validating set
+
+dim(validating)
+
+```
+
+## Modeling
+In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. It is estimated internally, during the execution. So, we proceed with the training the model (Random Forest) with the training data set.
+
+```{r rf_apply}
+
+model <- randomForest(classe~.,data=training)
+print(model)
+
+```
+
+### Model Evaluate
+And proceed with the verification of variable importance measures as produced by random Forest:
+
+```{r CkImportVar}
+
+importance(model)
+
+```
+
+Now we evaluate our model results through confusion Matrix.
+
+```{r confMx}
+
+confusionMatrix(predict(model,newdata=validating[,-ncol(validating)]),validating$classe)
+
+```
+
+And confirmed the accuracy at validating data set by calculate it with the formula:
+
+```{r CAccur}
+
+accuracy <-c(as.numeric(predict(model,newdata=validating[,-ncol(validating)])==validating$classe))
+
+accuracy <-sum(accuracy)*100/nrow(validating)
+
+```
+
+Model Accuracy as tested over Validation set = **`r round(accuracy,1)`%**.  
+
+### Model Test
+
+Finally, we proceed with predicting the new values in the testing csv provided, first we apply the same data cleaning operations on it and coerce all columns of testing data set for the same class of previous data set. 
+
+#### Getting Testing Dataset
+
+```{r GetTestData}
+
+testingdata <- getURL("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+pmltest_CSV  <- read.csv(text = testingdata, header=TRUE, sep=",", na.strings=c("NA",""))
+
+pmltest_CSV <- pmltest_CSV[,-1] # Remove the first column that represents a ID Row
+pmltest_CSV <- pmltest_CSV[ , Keep] # Keep the same columns of testing dataset
+pmltest_CSV <- pmltest_CSV[,-ncol(pmltest_CSV)] # Remove the problem ID
+
+# Apply the Same Transformations and Coerce Testing Dataset
+
+# Coerce testing dataset to same class and strucuture of training dataset 
+testing <- rbind(training[100, -59] , pmltest_CSV) 
+# Apply the ID Row to row.names and 100 for dummy row from testing dataset 
+row.names(testing) <- c(100, 1:20)
+
+```
+
+#### Predicting with testing dataset
+
+```{r PredictingTestingResults}
+
+predictions <- predict(model,newdata=testing[-1,])
+print(predictions)
+
+```
+
+
+```{r cache=FALSE}
+endTime <- Sys.time()
+
+```
+The analysis was completed on `r format(Sys.time(), "%a %b %d %X %Y")`  in `r round(difftime(endTime, startTime , units = c( "secs")),0)` seconds.
